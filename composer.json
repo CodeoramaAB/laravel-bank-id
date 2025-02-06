@@ -3,7 +3,11 @@
     "description": "A package for integrating Swedish BankID in Laravel applications",
     "type": "library",
     "license": "MIT",
-    "authors": [
+    "authors": [ 
+        {
+            "name": "Niklas Palmqvist",
+            "email": "niklas@codeorama.se"
+        },
         {
             "name": "Johannes Eriksson",
             "email": "johannes@jgroup.se"
