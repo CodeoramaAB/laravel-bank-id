@@ -10,7 +10,7 @@ The source code is based on the [sample application provided by BankID](https://
 
 Start by installing the package using Composer.
 
-`composer require jgroup/laravel-bank-id`
+`composer require codeorama/laravel-bank-id`
 
 Publish config and certificates (test certificates and production ca root certificate) by running:
 
