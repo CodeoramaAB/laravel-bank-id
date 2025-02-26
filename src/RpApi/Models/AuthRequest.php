@@ -8,6 +8,8 @@ class AuthRequest extends JsonSerializer
 {
     public string $endUserIp;
 
+    public ?string $returnUrl = null;
+
     public ?string $userVisibleData = null;
 
     public ?string $userVisibleDataFormat = null;
@@ -29,6 +31,16 @@ class AuthRequest extends JsonSerializer
     public function setEndUserIp(string $endUserIp): void
     {
         $this->endUserIp = $endUserIp;
+    }
+
+    public function getReturnUrl(): string
+    {
+        return $this->returnUrl;
+    }
+
+    public function setReturnUrl(string $returnUrl): void
+    {
+        $this->returnUrl = $returnUrl;
     }
 
     public function getUserVisibleData(): ?string

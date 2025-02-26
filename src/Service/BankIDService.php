@@ -94,6 +94,7 @@ class BankIDService
 
     public function auth(
         string $endUserIp,
+        string $returnUrl = null,
         string $userVisibleData = null,
         string $userVisibleDataFormat = null,
         string $userNonVisibleData = null,
@@ -107,6 +108,10 @@ class BankIDService
         }
 
         $authRequest = new AuthRequest($endUserIp);
+
+        if ($returnUrl) {
+            $authRequest->setReturnUrl($returnUrl);
+        }
 
         if ($userVisibleData) {
             $authRequest->setUserVisibleData($userVisibleData);
