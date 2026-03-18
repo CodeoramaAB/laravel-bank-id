@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static \Jgroup\BankID\Service\Models\Http\CollectResponse|null collect()
  * @method static \Jgroup\BankID\Service\Models\Http\CancelResponse cancel()
  * @method static \Jgroup\BankID\Service\Models\BankIDTransaction|null getSessionTransaction()
- * @method static void setSessionTransaction(\Jgroup\BankID\Service\Models\BankIDTransaction $transaction)
+ * @method static void setSessionTransaction(?\Jgroup\BankID\Service\Models\BankIDTransaction $transaction = null)
  *
  * @see \Jgroup\BankID\Service\BankIDService
  */
