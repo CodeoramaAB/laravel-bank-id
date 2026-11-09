@@ -3,9 +3,9 @@
 namespace Jgroup\BankID\Tests;
 
 use Jgroup\BankID\Facades\BankID;
-use Jgroup\BankID\Rules\SignCompleted;
-use Jgroup\BankID\RpApi\Models\CompletionData;
 use Jgroup\BankID\RpApi\Models\CollectResponse;
+use Jgroup\BankID\RpApi\Models\CompletionData;
+use Jgroup\BankID\Rules\SignCompleted;
 use Jgroup\BankID\Service\Models\BankIDTransaction;
 
 class SignCompleteTest extends TestCase
@@ -45,12 +45,12 @@ class SignCompleteTest extends TestCase
             'autoStartToken'
         );
 
-        $collectResponse = new CollectResponse();
+        $collectResponse = new CollectResponse;
         $collectResponse->setOrderRef('orderInfo123');
         $collectResponse->setStatus('complete');
         $collectResponse->setHintCode('hintCode');
 
-        $completionData = new CompletionData();
+        $completionData = new CompletionData;
         $completionData->setSignature($this->signature);
 
         $collectResponse->setCompletionData($completionData);

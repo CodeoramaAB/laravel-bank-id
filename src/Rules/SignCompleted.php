@@ -2,9 +2,9 @@
 
 namespace Jgroup\BankID\Rules;
 
+use Illuminate\Contracts\Validation\Rule;
 use Jgroup\BankID\Facades\BankID;
 use Jgroup\BankID\Service\Models\Status;
-use Illuminate\Contracts\Validation\Rule;
 use Jgroup\BankID\Signature\DigitalSignature;
 
 class SignCompleted implements Rule
@@ -20,13 +20,13 @@ class SignCompleted implements Rule
     {
         $transaction = BankID::getSessionTransaction();
 
-        if (!$transaction || $transaction->getTransactionId() !== $value || $transaction->getIsAuthTransaction()) {
+        if (! $transaction || $transaction->getTransactionId() !== $value || $transaction->getIsAuthTransaction()) {
             return false;
         }
 
         $lastCollectResponse = $transaction->getLastCollectResponse();
 
-        if (!$lastCollectResponse || $lastCollectResponse->getStatus() !== Status::COMPLETE) {
+        if (! $lastCollectResponse || $lastCollectResponse->getStatus() !== Status::COMPLETE) {
             return false;
         }
 

@@ -33,13 +33,13 @@ class BankIDTransaction
 
     public function __construct(?string $orderRef, ?string $qrStartToken, ?string $qrStartSecret, ?string $autoStartToken)
     {
-        $this->orderRef       = $orderRef;
-        $this->qrStartToken   = $qrStartToken;
-        $this->qrStartSecret  = $qrStartSecret;
+        $this->orderRef = $orderRef;
+        $this->qrStartToken = $qrStartToken;
+        $this->qrStartSecret = $qrStartSecret;
         $this->autoStartToken = $autoStartToken;
-        $this->transactionId  = (string) Str::uuid();
-        $this->startTime      = Carbon::now();
-        $this->status         = Status::PENDING;
+        $this->transactionId = (string) Str::uuid();
+        $this->startTime = Carbon::now();
+        $this->status = Status::PENDING;
     }
 
     public function getTransactionId(): string
@@ -82,7 +82,7 @@ class BankIDTransaction
         return $this->autoStartToken;
     }
 
-    public function setLastCollectResponse(CollectResponse $collectResponse): void
+    public function setLastCollectResponse(?CollectResponse $collectResponse): void
     {
         $this->lastCollectResponse = $collectResponse;
     }
@@ -92,7 +92,7 @@ class BankIDTransaction
         return $this->lastCollectResponse;
     }
 
-    public function setLastCollect(Carbon $lastCollect): void
+    public function setLastCollect(?Carbon $lastCollect): void
     {
         $this->lastCollect = $lastCollect;
     }

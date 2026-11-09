@@ -4,13 +4,13 @@ namespace Jgroup\BankID\Tests;
 
 use Faker\Factory;
 use Jgroup\BankID\BankIDServiceProvider;
-use \Orchestra\Testbench\TestCase as OrchestraTestCase;
+use Orchestra\Testbench\TestCase as OrchestraTestCase;
 
 class TestCase extends OrchestraTestCase
 {
     protected $faker;
 
-    public function setUp(): void
+    protected function setUp(): void
     {
         parent::setUp();
 

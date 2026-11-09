@@ -15,7 +15,7 @@ class DigitalSignature
 
     public function __construct(?string $xmlSignature)
     {
-        if (!$xmlSignature) {
+        if (! $xmlSignature) {
             throw new Exception('xmlSignature is null');
         }
 
@@ -26,19 +26,19 @@ class DigitalSignature
 
         $bidSignedData = '/digsig:Signature/digsig:Object/bidsig:bankIdSignedData';
 
-        $signatureUsage = $xmlDoc->xpath($bidSignedData . '/bidsig:clientInfo/bidsig:funcId');
+        $signatureUsage = $xmlDoc->xpath($bidSignedData.'/bidsig:clientInfo/bidsig:funcId');
 
         if (count($signatureUsage) > 0) {
             $this->signatureUsage = (string) $signatureUsage[0];
         }
 
-        $userNonVisibleData = $xmlDoc->xpath($bidSignedData . '/bidsig:usrNonVisibleData');
+        $userNonVisibleData = $xmlDoc->xpath($bidSignedData.'/bidsig:usrNonVisibleData');
 
         if (count($userNonVisibleData) > 0) {
             $this->userNonVisibleData = (string) $userNonVisibleData[0];
         }
 
-        $userVisibleData = $xmlDoc->xpath($bidSignedData . '/bidsig:usrVisibleData');
+        $userVisibleData = $xmlDoc->xpath($bidSignedData.'/bidsig:usrVisibleData');
 
         if (count($userVisibleData) > 0) {
             $this->userVisibleData = (string) $userVisibleData[0];

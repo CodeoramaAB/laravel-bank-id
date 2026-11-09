@@ -2,8 +2,8 @@
 
 namespace Jgroup\BankID\Service\Models\Http;
 
-use Illuminate\Http\Response;
 use Illuminate\Contracts\Support\Responsable;
+use Illuminate\Http\Response;
 use Jgroup\BankID\Serializers\JsonSerializer;
 use Jgroup\BankID\Service\Models\CollectResult;
 
@@ -26,9 +26,9 @@ class CollectResponse extends JsonSerializer implements Responsable
     public function __construct(string $transactionId, CollectResult $collectResult)
     {
         $this->transactionId = $transactionId;
-        $this->hintCode      = $collectResult->getHintCode();
-        $this->status        = $collectResult->getStatus();
-        $this->qrCode        = $collectResult->getQrCode();
+        $this->hintCode = $collectResult->getHintCode();
+        $this->status = $collectResult->getStatus();
+        $this->qrCode = $collectResult->getQrCode();
         $this->collectResult = $collectResult;
 
         if ($collectResult->getCompletionResult()) {

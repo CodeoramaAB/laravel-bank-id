@@ -12,9 +12,9 @@ class CompletionResult
 
     public function __construct(string $name, string $personalNumber, ?string $signedText = null)
     {
-        $this->name           = $name;
+        $this->name = $name;
         $this->personalNumber = $personalNumber;
-        $this->signedText     = $signedText;
+        $this->signedText = $signedText;
     }
 
     public function getName(): string

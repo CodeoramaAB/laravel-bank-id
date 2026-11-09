@@ -3,26 +3,26 @@
 namespace Jgroup\BankID\Service;
 
 use Carbon\Carbon;
-use Psr\Log\LoggerInterface;
-use Jgroup\BankID\RpApi\RpApi;
-use Jgroup\BankID\Service\Models\Status;
+use GuzzleHttp\Exception\BadResponseException;
 use Illuminate\Contracts\Session\Session;
 use Jgroup\BankID\RpApi\Models\AuthRequest;
-use Jgroup\BankID\RpApi\Models\SignRequest;
 use Jgroup\BankID\RpApi\Models\CancelRequest;
-use Jgroup\BankID\Signature\DigitalSignature;
-use GuzzleHttp\Exception\BadResponseException;
 use Jgroup\BankID\RpApi\Models\CollectRequest;
+use Jgroup\BankID\RpApi\Models\SignRequest;
+use Jgroup\BankID\RpApi\RpApi;
+use Jgroup\BankID\Service\Models\BankIDTransaction;
 use Jgroup\BankID\Service\Models\CollectResult;
 use Jgroup\BankID\Service\Models\CompletionResult;
-use Jgroup\BankID\Service\Models\BankIDTransaction;
 use Jgroup\BankID\Service\Models\Http\CancelResponse;
 use Jgroup\BankID\Service\Models\Http\CollectResponse;
 use Jgroup\BankID\Service\Models\Http\TransactionResponse;
+use Jgroup\BankID\Service\Models\Status;
+use Jgroup\BankID\Signature\DigitalSignature;
+use Psr\Log\LoggerInterface;
 
 class BankIDService
 {
-    const LOG_CHANNEL_COMPLETIONS = 'bankid-completions';
+    public const LOG_CHANNEL_COMPLETIONS = 'bankid-completions';
 
     protected RpApi $rpApi;
 
@@ -38,186 +38,100 @@ class BankIDService
         LoggerInterface $logger,
         string $sessionKey = 'bankid_transaction'
     ) {
-        $this->rpApi      = $rpApi;
-        $this->session    = $session;
-        $this->logger     = $logger;
+        $this->rpApi = $rpApi;
+        $this->session = $session;
+        $this->logger = $logger;
         $this->sessionKey = $sessionKey;
     }
+
+    /* -----------------------------------------------------------------
+     | Public API
+     | -----------------------------------------------------------------
+     */
 
     public function sign(
         string $endUserIp,
         string $userVisibleData,
-        string $userVisibleDataFormat = null,
-        string $userNonVisibleData = null,
-        array $requirement = null
+        ?string $userVisibleDataFormat = null,
+        ?string $userNonVisibleData = null,
+        ?array $requirement = null
     ): ?TransactionResponse {
-        if (
-            $this->getSessionTransaction() &&
-            $this->getSessionTransaction()->getStatus() === Status::PENDING
-        ) {
-            $this->cancelOngoingTransaction();
-        }
-
-        $signRequest = new SignRequest($endUserIp, $userVisibleData);
-
+        $request = new SignRequest($endUserIp, $userVisibleData);
         if ($userVisibleDataFormat) {
-            $signRequest->setUserVisibleDataFormat($userVisibleDataFormat);
+            $request->setUserVisibleDataFormat($userVisibleDataFormat);
         }
-
         if ($userNonVisibleData) {
-            $signRequest->setUserNonVisibleData($userNonVisibleData);
+            $request->setUserNonVisibleData($userNonVisibleData);
         }
 
-        $startTransaction = $this->rpApi->sign($signRequest);
-
-        if (!$startTransaction) {
-            $this->setSessionTransaction(null);
-            return null;
-        }
-
-        $transaction = new BankIDTransaction(
-            $startTransaction->getOrderRef(),
-            $startTransaction->getQrStartToken(),
-            $startTransaction->getQrStartSecret(),
-            $startTransaction->getAutoStartToken()
-        );
-
-        $transaction->setIsAuthTransaction(false);
-
-        $this->setSessionTransaction($transaction);
-
-        return new TransactionResponse(
-            $transaction->getTransactionId(),
-            $transaction->getAutoStartToken()
-        );
+        return $this->startTransaction(fn () => $this->rpApi->sign($request), false);
     }
 
     public function auth(
         string $endUserIp,
-        string $returnUrl = null,
-        string $userVisibleData = null,
-        string $userVisibleDataFormat = null,
-        string $userNonVisibleData = null,
-        array $requirement = null
+        ?string $returnUrl = null,
+        ?string $userVisibleData = null,
+        ?string $userVisibleDataFormat = null,
+        ?string $userNonVisibleData = null,
+        ?array $requirement = null
     ): ?TransactionResponse {
-        if (
-            $this->getSessionTransaction() &&
-            $this->getSessionTransaction()->getStatus() === Status::PENDING
-        ) {
-            $this->cancelOngoingTransaction();
-        }
-
-        $authRequest = new AuthRequest($endUserIp);
-
+        $request = new AuthRequest($endUserIp);
         if ($returnUrl) {
-            $authRequest->setReturnUrl($returnUrl);
+            $request->setReturnUrl($returnUrl);
         }
-
         if ($userVisibleData) {
-            $authRequest->setUserVisibleData($userVisibleData);
-
+            $request->setUserVisibleData($userVisibleData);
             if ($userVisibleDataFormat) {
-                $authRequest->setUserVisibleDataFormat($userVisibleDataFormat);
+                $request->setUserVisibleDataFormat($userVisibleDataFormat);
             }
         }
-
         if ($userNonVisibleData) {
-            $authRequest->setUserNonVisibleData($userNonVisibleData);
+            $request->setUserNonVisibleData($userNonVisibleData);
         }
-
         if ($requirement) {
-            $authRequest->setRequirement($requirement);
+            $request->setRequirement($requirement);
         }
 
-        $startTransaction = $this->rpApi->auth($authRequest);
-
-        if (!$startTransaction) {
-            $this->setSessionTransaction(null);
-            return null;
-        }
-
-        $transaction = new BankIDTransaction(
-            $startTransaction->getOrderRef(),
-            $startTransaction->getQrStartToken(),
-            $startTransaction->getQrStartSecret(),
-            $startTransaction->getAutoStartToken()
-        );
-
-        $transaction->setIsAuthTransaction(true);
-
-        $this->setSessionTransaction($transaction);
-
-        return new TransactionResponse(
-            $transaction->getTransactionId(),
-            $transaction->getAutoStartToken()
-        );
+        return $this->startTransaction(fn () => $this->rpApi->auth($request), true);
     }
 
     public function collect(): ?CollectResponse
     {
         $transaction = $this->getSessionTransaction();
-
-        if (!$transaction) {
+        if (! $transaction) {
             return null;
         }
 
-        if ($this->shouldCallBankIDCollect($transaction)) {
-            $collectResponse = $this->rpApi->collect(
-                new CollectRequest($transaction->getOrderRef())
-            );
+        // perform collect only if needed
+        $collectResponse = $this->shouldCallBankIDCollect($transaction)
+            ? $this->performCollect($transaction)
+            : $transaction->getLastCollectResponse();
 
-            if (!$collectResponse) {
-                $this->setSessionTransaction(null);
-                return null;
-            }
+        if (! $collectResponse) {
+            $this->setSessionTransaction(null);
 
-            $status = Status::fromString($collectResponse->getStatus());
-
-            if ($status === Status::COMPLETE) {
-                $this->logger
-                    ->channel(self::LOG_CHANNEL_COMPLETIONS)
-                    ->info(json_encode($collectResponse));
-            }
-
-            $transaction->setLastCollectResponse($collectResponse);
-            $transaction->setLastCollect(Carbon::now());
-            $transaction->setStatus($status);
-        } else {
-            $collectResponse = $transaction->getLastCollectResponse();
+            return null;
         }
 
+        // build result DTO
         $collectResult = new CollectResult(
             $transaction,
             $collectResponse->getStatus(),
-            $collectResponse->getHintCode(),
+            $collectResponse->getHintCode()
         );
 
-        $this->setSessionTransaction($collectResult->getTransaction());
-
-        if (
-            $collectResult->getStatus() === Status::PENDING &&
-            $collectResult->getHintCode() === 'outstandingTransaction'
-        ) {
-            $collectResult->setQrCode($this->getQRData($transaction));
+        // QR code if still pending
+        if ($collectResult->getStatus() === Status::PENDING && $collectResult->getHintCode() === 'outstandingTransaction') {
+            $collectResult->setQrCode($this->generateQrCode($transaction));
         }
 
+        // attach completion result if done
         if ($collectResult->getStatus() === Status::COMPLETE) {
-            $name           = $collectResponse->getCompletionData()->getUser()->getName();
-            $personalNumber = $collectResponse->getCompletionData()->getUser()->getPersonalNumber();
-
-            $signatureXml = base64_decode($collectResponse->getCompletionData()->getSignature());
-
-            $digSig = new DigitalSignature($signatureXml);
-
-            $visibleData = null;
-            if ($digSig->getUserVisibleData() != null && strlen($digSig->getUserVisibleData()) > 0) {
-                $visibleData = base64_decode($digSig->getUserVisibleData());
-            }
-
-            $collectResult->setCompletionResult(
-                new CompletionResult($name, $personalNumber, $visibleData)
-            );
+            $this->attachCompletionResult($collectResult, $collectResponse);
         }
+
+        // persist updated transaction
+        $this->setSessionTransaction($collectResult->getTransaction());
 
         return new CollectResponse(
             $collectResult->getTransaction()->getTransactionId(),
@@ -230,25 +144,9 @@ class BankIDService
         return new CancelResponse($this->cancelOngoingTransaction());
     }
 
-    protected function cancelOngoingTransaction(): bool
+    public function setCertificatePaths(string $certPath, string $certKeyPath): void
     {
-        $transaction = $this->getSessionTransaction();
-
-        if (!$transaction) {
-            return false;
-        }
-
-        $orderRef = $transaction->getOrderRef();
-
-        try {
-            $this->rpApi->cancel(new CancelRequest($orderRef));
-
-            $this->setSessionTransaction(null);
-
-            return true;
-        } catch (BadResponseException $e) {
-            return false;
-        }
+        $this->rpApi->setCertificatePaths($certPath, $certKeyPath);
     }
 
     public function getSessionTransaction(): ?BankIDTransaction
@@ -256,32 +154,117 @@ class BankIDService
         return $this->session->get($this->sessionKey);
     }
 
-    public function setSessionTransaction(BankIDTransaction $transaction = null): void
+    public function setSessionTransaction(?BankIDTransaction $transaction = null): void
     {
         $this->session->put($this->sessionKey, $transaction);
     }
 
-    protected function getQRData(BankIDTransaction $transaction): string
+    /* -----------------------------------------------------------------
+     | Protected Helpers
+     | -----------------------------------------------------------------
+     */
+
+    protected function startTransaction(callable $starter, bool $isAuth): ?TransactionResponse
     {
-        $secondsElapsedSinceStartTime = $transaction->getStartTime()->diffInSeconds(Carbon::now());
+        $this->cancelPendingTransaction();
 
-        $qrAuthCode = hash_hmac(
-            'sha256', $secondsElapsedSinceStartTime, $transaction->getQrStartSecret()
+        $startTransaction = $starter();
+        if (! $startTransaction) {
+            $this->setSessionTransaction(null);
+
+            return null;
+        }
+
+        $transaction = new BankIDTransaction(
+            $startTransaction->getOrderRef(),
+            $startTransaction->getQrStartToken(),
+            $startTransaction->getQrStartSecret(),
+            $startTransaction->getAutoStartToken()
         );
+        $transaction->setIsAuthTransaction($isAuth);
 
-        $qrStartToken = $transaction->getQrStartToken();
+        $this->setSessionTransaction($transaction);
 
-        return "bankid.{$qrStartToken}.{$secondsElapsedSinceStartTime}.{$qrAuthCode}";
+        return new TransactionResponse(
+            $transaction->getTransactionId(),
+            $transaction->getAutoStartToken()
+        );
+    }
+
+    protected function cancelPendingTransaction(): void
+    {
+        $transaction = $this->getSessionTransaction();
+        if ($transaction && $transaction->getStatus() === Status::PENDING) {
+            $this->cancelOngoingTransaction();
+        }
+    }
+
+    protected function cancelOngoingTransaction(): bool
+    {
+        $transaction = $this->getSessionTransaction();
+        if (! $transaction) {
+            return false;
+        }
+
+        try {
+            $this->rpApi->cancel(new CancelRequest($transaction->getOrderRef()));
+            $this->setSessionTransaction(null);
+
+            return true;
+        } catch (BadResponseException) {
+            return false;
+        }
     }
 
     protected function shouldCallBankIDCollect(BankIDTransaction $transaction): bool
     {
-        if (!$transaction->getLastCollectResponse() || !$transaction->getLastCollect()) {
-            return true;
+        $lastCollect = $transaction->getLastCollect();
+
+        return ! $transaction->getLastCollectResponse() || ! $lastCollect || $lastCollect->diffInSeconds(Carbon::now()) > 1;
+    }
+
+    protected function performCollect(BankIDTransaction $transaction)
+    {
+        $collectResponse = $this->rpApi->collect(new CollectRequest($transaction->getOrderRef()));
+        if (! $collectResponse) {
+            return null;
         }
 
-        $secondsElapsedSinceLastCollect = $transaction->getLastCollect()->diffInSeconds(Carbon::now());
+        $transaction->setLastCollectResponse($collectResponse);
+        $transaction->setLastCollect(Carbon::now());
+        $transaction->setStatus(Status::fromString($collectResponse->getStatus()));
 
-        return $secondsElapsedSinceLastCollect > 1;
+        if ($transaction->getStatus() === Status::COMPLETE) {
+            $this->logger->channel(self::LOG_CHANNEL_COMPLETIONS)->info(json_encode($collectResponse));
+        }
+
+        return $collectResponse;
+    }
+
+    protected function attachCompletionResult(CollectResult $result, $collectResponse): void
+    {
+        $completion = $collectResponse->getCompletionData();
+        $user = $completion->getUser();
+
+        $signatureXml = base64_decode($completion->getSignature());
+        $digSig = new DigitalSignature($signatureXml);
+
+        $visibleData = $digSig->getUserVisibleData()
+            ? base64_decode($digSig->getUserVisibleData())
+            : null;
+
+        $result->setCompletionResult(new CompletionResult(
+            $user->getName(),
+            $user->getPersonalNumber(),
+            $visibleData
+        ));
+    }
+
+    protected function generateQrCode(BankIDTransaction $transaction): string
+    {
+        $secondsElapsed = (int) $transaction->getStartTime()->diffInSeconds(Carbon::now());
+        $qrAuthCode = hash_hmac('sha256', $secondsElapsed, $transaction->getQrStartSecret());
+
+        return "bankid.{$transaction->getQrStartToken()}.{$secondsElapsed}.{$qrAuthCode}";
     }
 }

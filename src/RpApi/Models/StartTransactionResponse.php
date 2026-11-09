@@ -51,5 +51,4 @@ class StartTransactionResponse
     {
         $this->qrStartToken = $qrStartToken;
     }
-
 }

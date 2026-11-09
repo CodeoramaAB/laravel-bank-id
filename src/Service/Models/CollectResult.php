@@ -17,8 +17,8 @@ class CollectResult
     public function __construct(BankIDTransaction $transaction, string $status, ?string $hintCode)
     {
         $this->transaction = $transaction;
-        $this->status      = Status::fromString($status);
-        $this->hintCode    = $hintCode;
+        $this->status = Status::fromString($status);
+        $this->hintCode = $hintCode;
     }
 
     public function getQrCode(): ?string
