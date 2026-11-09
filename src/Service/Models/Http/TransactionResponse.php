@@ -2,8 +2,8 @@
 
 namespace Jgroup\BankID\Service\Models\Http;
 
-use Illuminate\Http\Response;
 use Illuminate\Contracts\Support\Responsable;
+use Illuminate\Http\Response;
 use Jgroup\BankID\Serializers\JsonSerializer;
 
 class TransactionResponse extends JsonSerializer implements Responsable
@@ -14,7 +14,7 @@ class TransactionResponse extends JsonSerializer implements Responsable
 
     public function __construct(string $transactionId, string $autoStartToken)
     {
-        $this->transactionId  = $transactionId;
+        $this->transactionId = $transactionId;
         $this->autoStartToken = $autoStartToken;
     }
 

@@ -2,8 +2,8 @@
 
 namespace Jgroup\BankID\Service\Models\Http;
 
-use Illuminate\Http\Response;
 use Illuminate\Contracts\Support\Responsable;
+use Illuminate\Http\Response;
 use Jgroup\BankID\Serializers\JsonSerializer;
 use Jgroup\BankID\Service\Models\CompletionResult;
 
@@ -22,8 +22,8 @@ class CompletionResponse extends JsonSerializer implements Responsable
         $personalNumber = $completionResult->getPersonalNumber();
 
         if ($personalNumber != null && strlen($personalNumber) > self::NUMBER_OF_DIGITS_TO_HIDE) {
-            $digitsToSave         = strlen($personalNumber) - self::NUMBER_OF_DIGITS_TO_HIDE;
-            $this->personalNumber = substr($personalNumber, 0, $digitsToSave) . "-XXXX";
+            $digitsToSave = strlen($personalNumber) - self::NUMBER_OF_DIGITS_TO_HIDE;
+            $this->personalNumber = substr($personalNumber, 0, $digitsToSave).'-XXXX';
         } else {
             $this->personalNumber = $personalNumber;
         }

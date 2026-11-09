@@ -3,14 +3,16 @@
 namespace Jgroup\BankID\Tests;
 
 use Carbon\Carbon;
-use Jgroup\BankID\RpApi\RpApi;
-use Jgroup\BankID\RpApi\Models\UserData;
-use Jgroup\BankID\Service\BankIDService;
-use Jgroup\BankID\Service\Models\Status;
-use Jgroup\BankID\RpApi\Models\CompletionData;
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Psr7\Request;
 use Jgroup\BankID\RpApi\Models\CollectResponse;
-use Jgroup\BankID\Service\Models\BankIDTransaction;
+use Jgroup\BankID\RpApi\Models\CompletionData;
 use Jgroup\BankID\RpAPi\Models\StartTransactionResponse;
+use Jgroup\BankID\RpApi\Models\UserData;
+use Jgroup\BankID\RpApi\RpApi;
+use Jgroup\BankID\Service\BankIDService;
+use Jgroup\BankID\Service\Models\BankIDTransaction;
+use Jgroup\BankID\Service\Models\Status;
 
 class BankIDServiceTest extends TestCase
 {
@@ -32,7 +34,7 @@ class BankIDServiceTest extends TestCase
 
     protected $rpApiMock;
 
-    public function setUp(): void
+    protected function setUp(): void
     {
         parent::setUp();
 
@@ -48,7 +50,7 @@ class BankIDServiceTest extends TestCase
 
     public function test_auth()
     {
-        $startTransactionResponse = new StartTransactionResponse();
+        $startTransactionResponse = new StartTransactionResponse;
         $startTransactionResponse->setAutoStartToken('autoStart');
         $startTransactionResponse->setOrderRef('orderRef');
 
@@ -78,7 +80,7 @@ class BankIDServiceTest extends TestCase
 
     public function test_sign()
     {
-        $startTransactionResponse = new StartTransactionResponse();
+        $startTransactionResponse = new StartTransactionResponse;
         $startTransactionResponse->setAutoStartToken('autoStart');
         $startTransactionResponse->setOrderRef('orderRef');
 
@@ -110,7 +112,7 @@ class BankIDServiceTest extends TestCase
     {
         Carbon::setTestNow(Carbon::createFromTimestamp(self::FAKE_TIME));
 
-        $collectResponse = new CollectResponse();
+        $collectResponse = new CollectResponse;
         $collectResponse->setOrderRef('orderInfo123');
         $collectResponse->setStatus(Status::PENDING);
         $collectResponse->setHintCode('outstandingTransaction');
@@ -133,7 +135,7 @@ class BankIDServiceTest extends TestCase
         $this->assertEquals('outstandingTransaction', $response->getHintCode());
         $this->assertEquals(Status::PENDING, $response->getStatus());
         $this->assertEquals(
-            "bankid.67df3917-fa0d-44e5-b327-edcc928297f8.0.dc69358e712458a66a7525beef148ae8526b1c71610eff2c16cdffb4cdac9bf8",
+            'bankid.67df3917-fa0d-44e5-b327-edcc928297f8.0.dc69358e712458a66a7525beef148ae8526b1c71610eff2c16cdffb4cdac9bf8',
             $response->getQrCode()
         );
 
@@ -144,10 +146,10 @@ class BankIDServiceTest extends TestCase
         $response = $this->service->collect();
 
         // Assert second collect
-        $this->assertEquals("outstandingTransaction", $response->getHintCode());
+        $this->assertEquals('outstandingTransaction', $response->getHintCode());
         $this->assertEquals(Status::PENDING, $response->getStatus());
         $this->assertEquals(
-            "bankid.67df3917-fa0d-44e5-b327-edcc928297f8.1.949d559bf23403952a94d103e67743126381eda00f0b3cbddbf7c96b1adcbce2",
+            'bankid.67df3917-fa0d-44e5-b327-edcc928297f8.1.949d559bf23403952a94d103e67743126381eda00f0b3cbddbf7c96b1adcbce2',
             $response->getQrCode());
 
         // Verify only one collect
@@ -158,10 +160,10 @@ class BankIDServiceTest extends TestCase
 
         // Call collect
         $response = $this->service->collect();
-        $this->assertEquals("outstandingTransaction", $response->getHintCode());
+        $this->assertEquals('outstandingTransaction', $response->getHintCode());
         $this->assertEquals(Status::PENDING, $response->getStatus());
         $this->assertEquals(
-            "bankid.67df3917-fa0d-44e5-b327-edcc928297f8.2.a9e5ec59cb4eee4ef4117150abc58fad7a85439a6a96ccbecc3668b41795b3f3",
+            'bankid.67df3917-fa0d-44e5-b327-edcc928297f8.2.a9e5ec59cb4eee4ef4117150abc58fad7a85439a6a96ccbecc3668b41795b3f3',
             $response->getQrCode());
         $this->assertNull($response->getCollectResult()->getCompletionResult());
 
@@ -188,9 +190,62 @@ class BankIDServiceTest extends TestCase
         $this->assertNull($this->service->getSessionTransaction());
     }
 
+    public function test_collect_qr_code_uses_whole_seconds_when_the_start_time_has_a_fraction()
+    {
+        // Review finding 1: on Carbon 3, diffInSeconds() returned 1.8 here and
+        // produced the unreadable "bankid.TOKEN.1.8.HMAC".
+        Carbon::setTestNow('2026-11-09 10:00:00.700');
+
+        $collectResponse = new CollectResponse;
+        $collectResponse->setOrderRef('orderInfo123');
+        $collectResponse->setStatus(Status::PENDING);
+        $collectResponse->setHintCode('outstandingTransaction');
+
+        $this->rpApiMock->shouldReceive('collect')->andReturn($collectResponse);
+
+        $this->service->setSessionTransaction(new BankIDTransaction(
+            'orderInfo123',
+            '67df3917-fa0d-44e5-b327-edcc928297f8',
+            'd28db9a7-4cde-429e-a983-359be676944c',
+            'autoStartToken'
+        ));
+
+        Carbon::setTestNow('2026-11-09 10:00:02.500');
+
+        $this->assertEquals(
+            'bankid.67df3917-fa0d-44e5-b327-edcc928297f8.1.949d559bf23403952a94d103e67743126381eda00f0b3cbddbf7c96b1adcbce2',
+            $this->service->collect()->getQrCode()
+        );
+
+        Carbon::setTestNow();
+    }
+
+    public function test_a_connection_failure_during_collect_keeps_the_transaction()
+    {
+        // The order may still be alive at BankID, so a network blip must not
+        // drop it; the caller decides whether to retry.
+        $this->rpApiMock->shouldReceive('collect')
+            ->andThrow(new ConnectException('Connection reset', new Request('POST', 'collect')));
+
+        $transaction = new BankIDTransaction(
+            'orderInfo123',
+            '67df3917-fa0d-44e5-b327-edcc928297f8',
+            'd28db9a7-4cde-429e-a983-359be676944c',
+            'autoStartToken'
+        );
+        $this->service->setSessionTransaction($transaction);
+
+        try {
+            $this->service->collect();
+            $this->fail('Expected the connection failure to be thrown.');
+        } catch (ConnectException) {
+            $this->assertSame($transaction, $this->service->getSessionTransaction());
+        }
+    }
+
     public function test_collect_pending_no_qr_code()
     {
-        $collectResponse = new CollectResponse();
+        $collectResponse = new CollectResponse;
         $collectResponse->setOrderRef('orderInfo123');
         $collectResponse->setStatus(Status::PENDING);
         $collectResponse->setHintCode('started');
@@ -216,7 +271,7 @@ class BankIDServiceTest extends TestCase
 
     public function test_collect_failed()
     {
-        $collectResponse = new CollectResponse();
+        $collectResponse = new CollectResponse;
         $collectResponse->setOrderRef('orderInfo123');
         $collectResponse->setStatus(Status::FAILED);
         $collectResponse->setHintCode('startFailed');
@@ -242,15 +297,15 @@ class BankIDServiceTest extends TestCase
 
     public function test_collect_complete()
     {
-        $userData = new UserData();
+        $userData = new UserData;
         $userData->setName('Test Name');
         $userData->setPersonalNumber('123456789012');
-        $completionData = new CompletionData();
+        $completionData = new CompletionData;
         $completionData->setUser($userData);
         $completionData->setSignature($this->signature);
         $completionData->setOcspResponse($this->ocspResponse);
 
-        $collectResponse = new CollectResponse();
+        $collectResponse = new CollectResponse;
         $collectResponse->setOrderRef('orderInfo123');
         $collectResponse->setStatus(Status::COMPLETE);
         $collectResponse->setCompletionData($completionData);
@@ -282,15 +337,15 @@ class BankIDServiceTest extends TestCase
 
     public function test_collect_no_visible_data()
     {
-        $userData = new UserData();
+        $userData = new UserData;
         $userData->setName('Test Name');
         $userData->setPersonalNumber('123456789012');
-        $completionData = new CompletionData();
+        $completionData = new CompletionData;
         $completionData->setUser($userData);
         $completionData->setSignature($this->signatureNoVisibleData);
         $completionData->setOcspResponse($this->ocspNoVisibleData);
 
-        $collectResponse = new CollectResponse();
+        $collectResponse = new CollectResponse;
         $collectResponse->setOrderRef('orderInfo123');
         $collectResponse->setStatus(Status::COMPLETE);
         $collectResponse->setCompletionData($completionData);

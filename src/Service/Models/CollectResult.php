@@ -17,8 +17,8 @@ class CollectResult
     public function __construct(BankIDTransaction $transaction, string $status, ?string $hintCode)
     {
         $this->transaction = $transaction;
-        $this->status      = Status::fromString($status);
-        $this->hintCode    = $hintCode;
+        $this->status = Status::fromString($status);
+        $this->hintCode = $hintCode;
     }
 
     public function getQrCode(): ?string
@@ -39,6 +39,27 @@ class CollectResult
     public function getHintCode(): ?string
     {
         return $this->hintCode;
+    }
+
+    /**
+     * True while the order is pending and no app has picked it up yet: the QR
+     * code has not been scanned and the app has not been opened.
+     *
+     * @see https://developers.bankid.com/api-references/auth--sign/collect
+     */
+    public function isAwaitingStart(): bool
+    {
+        return $this->status === Status::PENDING
+            && in_array($this->hintCode, ['outstandingTransaction', 'noClient'], true);
+    }
+
+    /**
+     * True when the order failed because it was not started within
+     * BankIDTransaction::START_TIMEOUT_SECONDS (hintCode `startFailed`).
+     */
+    public function isStartTimeout(): bool
+    {
+        return $this->status === Status::FAILED && $this->hintCode === 'startFailed';
     }
 
     public function getTransaction(): BankIDTransaction

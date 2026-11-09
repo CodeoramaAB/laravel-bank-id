@@ -2,8 +2,8 @@
 
 namespace Jgroup\BankID\Service\Models\Http;
 
-use Illuminate\Http\Response;
 use Illuminate\Contracts\Support\Responsable;
+use Illuminate\Http\Response;
 use Jgroup\BankID\Serializers\JsonSerializer;
 
 class CancelResponse extends JsonSerializer implements Responsable
