@@ -106,6 +106,16 @@ class RpApi
      | -----------------------------------------------------------------
      */
 
+    /**
+     * An HTTP error response (4xx/5xx) is BankID's answer about the order, so it
+     * maps to null. A ConnectException is deliberately not caught: a network
+     * failure says nothing about the order, which may still be alive upstream.
+     * Returning null would make BankIDService::collect() drop a valid
+     * transaction on a blip, so the caller gets the exception and can retry.
+     * (Upstream janjoo-group/laravel-bank-id returns null for both.)
+     *
+     * @throws ConnectException when BankID cannot be reached
+     */
     protected function postAndMap(
         string $endpoint,
         array $payload,
@@ -113,7 +123,7 @@ class RpApi
     ): ?object {
         try {
             $response = $this->performRequest($endpoint, $payload);
-        } catch (BadResponseException|ConnectException) {
+        } catch (BadResponseException) {
             return null;
         }
 

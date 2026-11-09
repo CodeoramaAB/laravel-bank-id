@@ -107,6 +107,16 @@ Route::post('/submit-form', function(Request $request) {
 
 ```
 
+## Network errors
+
+An HTTP error response from BankID makes `auth()`, `sign()` and `collect()`
+return `null`. A connection failure throws `GuzzleHttp\Exception\ConnectException`
+instead. The order may still be alive at BankID, so the session transaction is
+kept and the caller can retry. This differs from upstream
+`janjoo-group/laravel-bank-id`, which returns `null` for both and so drops a
+valid transaction on a network blip. `cancel()` stays best-effort and returns
+`false` for both.
+
 ## Front-end
 
 We've also developed a web component that works really well with this package and makes it easy to integrate BankID on websites.

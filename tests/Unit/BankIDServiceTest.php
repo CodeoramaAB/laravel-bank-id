@@ -3,6 +3,8 @@
 namespace Jgroup\BankID\Tests;
 
 use Carbon\Carbon;
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Psr7\Request;
 use Jgroup\BankID\RpApi\Models\CollectResponse;
 use Jgroup\BankID\RpApi\Models\CompletionData;
 use Jgroup\BankID\RpAPi\Models\StartTransactionResponse;
@@ -186,6 +188,29 @@ class BankIDServiceTest extends TestCase
 
         $this->assertNull($response);
         $this->assertNull($this->service->getSessionTransaction());
+    }
+
+    public function test_a_connection_failure_during_collect_keeps_the_transaction()
+    {
+        // The order may still be alive at BankID, so a network blip must not
+        // drop it; the caller decides whether to retry.
+        $this->rpApiMock->shouldReceive('collect')
+            ->andThrow(new ConnectException('Connection reset', new Request('POST', 'collect')));
+
+        $transaction = new BankIDTransaction(
+            'orderInfo123',
+            '67df3917-fa0d-44e5-b327-edcc928297f8',
+            'd28db9a7-4cde-429e-a983-359be676944c',
+            'autoStartToken'
+        );
+        $this->service->setSessionTransaction($transaction);
+
+        try {
+            $this->service->collect();
+            $this->fail('Expected the connection failure to be thrown.');
+        } catch (ConnectException) {
+            $this->assertSame($transaction, $this->service->getSessionTransaction());
+        }
     }
 
     public function test_collect_pending_no_qr_code()
