@@ -5,12 +5,22 @@ namespace Jgroup\BankID\Service\Models;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
 use Jgroup\BankID\RpApi\Models\CollectResponse;
+use Jgroup\BankID\Service\QrCode;
 
 /**
  * The BankID transaction stored in session.
  */
 class BankIDTransaction
 {
+    /**
+     * How long the user has to start the order (scan the QR code or open the
+     * app) after the auth or sign response. After that, collect reports
+     * `failed` with hintCode `startFailed`, and a new order is needed.
+     *
+     * @see https://developers.bankid.com/how-to-guides/qr-code
+     */
+    public const START_TIMEOUT_SECONDS = 30;
+
     protected ?string $orderRef = null;
 
     protected ?string $qrStartToken = null;
@@ -65,6 +75,29 @@ class BankIDTransaction
     public function getStartTime(): Carbon
     {
         return $this->startTime;
+    }
+
+    /**
+     * Whole seconds since the auth or sign response was returned, rounded down
+     * and never negative.
+     *
+     * Millisecond timestamps are compared on purpose. Carbon 3's
+     * diffInSeconds() returns a float, which used to leak into the QR code.
+     */
+    public function getAgeInSeconds(?Carbon $now = null): int
+    {
+        $now = $now ?? Carbon::now();
+        $elapsedMs = (int) $now->getTimestampMs() - (int) $this->startTime->getTimestampMs();
+
+        return intdiv(max(0, $elapsedMs), 1000);
+    }
+
+    /**
+     * The animated QR code content for this order at the given moment.
+     */
+    public function getQrData(?Carbon $now = null): string
+    {
+        return QrCode::payload($this->getQrStartToken(), $this->getQrStartSecret(), $this->getAgeInSeconds($now));
     }
 
     public function getQrStartSecret(): string

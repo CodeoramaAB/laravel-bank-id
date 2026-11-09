@@ -190,6 +190,36 @@ class BankIDServiceTest extends TestCase
         $this->assertNull($this->service->getSessionTransaction());
     }
 
+    public function test_collect_qr_code_uses_whole_seconds_when_the_start_time_has_a_fraction()
+    {
+        // Review finding 1: on Carbon 3, diffInSeconds() returned 1.8 here and
+        // produced the unreadable "bankid.TOKEN.1.8.HMAC".
+        Carbon::setTestNow('2026-11-09 10:00:00.700');
+
+        $collectResponse = new CollectResponse;
+        $collectResponse->setOrderRef('orderInfo123');
+        $collectResponse->setStatus(Status::PENDING);
+        $collectResponse->setHintCode('outstandingTransaction');
+
+        $this->rpApiMock->shouldReceive('collect')->andReturn($collectResponse);
+
+        $this->service->setSessionTransaction(new BankIDTransaction(
+            'orderInfo123',
+            '67df3917-fa0d-44e5-b327-edcc928297f8',
+            'd28db9a7-4cde-429e-a983-359be676944c',
+            'autoStartToken'
+        ));
+
+        Carbon::setTestNow('2026-11-09 10:00:02.500');
+
+        $this->assertEquals(
+            'bankid.67df3917-fa0d-44e5-b327-edcc928297f8.1.949d559bf23403952a94d103e67743126381eda00f0b3cbddbf7c96b1adcbce2',
+            $this->service->collect()->getQrCode()
+        );
+
+        Carbon::setTestNow();
+    }
+
     public function test_a_connection_failure_during_collect_keeps_the_transaction()
     {
         // The order may still be alive at BankID, so a network blip must not

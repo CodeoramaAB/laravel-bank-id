@@ -262,9 +262,6 @@ class BankIDService
 
     protected function generateQrCode(BankIDTransaction $transaction): string
     {
-        $secondsElapsed = (int) $transaction->getStartTime()->diffInSeconds(Carbon::now());
-        $qrAuthCode = hash_hmac('sha256', $secondsElapsed, $transaction->getQrStartSecret());
-
-        return "bankid.{$transaction->getQrStartToken()}.{$secondsElapsed}.{$qrAuthCode}";
+        return $transaction->getQrData();
     }
 }

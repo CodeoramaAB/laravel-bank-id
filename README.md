@@ -39,6 +39,7 @@ use Illuminate\Support\Facades\Route;
 Route::post('/auth/bankid', function(Request $request) {
     return BankID::auth(
         $request->getClientIp(),
+        null, // returnUrl
         'Text to display to the user'
     );
 });
@@ -105,6 +106,44 @@ Route::post('/submit-form', function(Request $request) {
     BankID::setSessionTransaction(null);
 });
 
+```
+
+## Animated QR codes and order lifetime
+
+BankID's [QR guide](https://developers.bankid.com/how-to-guides/qr-code) requires
+the QR code to be refreshed every second, with `time` measured on the backend.
+`qrStartSecret` must never be sent to the frontend. Compute the code on the
+server and send only the result:
+
+```php
+use Jgroup\BankID\Facades\BankID;
+use Jgroup\BankID\Service\QrCode;
+use Jgroup\BankID\Service\Models\BankIDTransaction;
+
+$transaction = BankID::getSessionTransaction();
+
+// bankid.{qrStartToken}.{time}.{qrAuthCode} for the current second
+$qr = $transaction->getQrData();
+
+// or from stored values
+$qr = QrCode::payload($qrStartToken, $qrStartSecret, $time);
+
+// whole seconds since the auth/sign response, never negative
+$age = $transaction->getAgeInSeconds();
+
+// an order must be started (QR scanned) within 30 seconds
+if ($age >= BankIDTransaction::START_TIMEOUT_SECONDS - 5) {
+    // create a new order to keep the QR code valid
+}
+```
+
+`CollectResult` tells you where the order is:
+
+```php
+$result = BankID::collect()->getCollectResult();
+
+$result->isAwaitingStart(); // pending, not yet scanned (outstandingTransaction / noClient)
+$result->isStartTimeout();  // failed with startFailed: not scanned in time
 ```
 
 ## Network errors
