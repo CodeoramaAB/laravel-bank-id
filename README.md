@@ -148,13 +148,19 @@ $result->isStartTimeout();  // failed with startFailed: not scanned in time
 
 ## Network errors
 
-An HTTP error response from BankID makes `auth()`, `sign()` and `collect()`
-return `null`. A connection failure throws `GuzzleHttp\Exception\ConnectException`
-instead. The order may still be alive at BankID, so the session transaction is
-kept and the caller can retry. This differs from upstream
-`janjoo-group/laravel-bank-id`, which returns `null` for both and so drops a
-valid transaction on a network blip. `cancel()` stays best-effort and returns
-`false` for both.
+A client error about the order (e.g. `400 invalidParameters` or `404`) makes
+`auth()`, `sign()` and `collect()` return `null`.
+
+A failure that says nothing about the order is thrown instead:
+
+- `GuzzleHttp\Exception\ConnectException` for a connection failure
+- `GuzzleHttp\Exception\BadResponseException` for `408`, `429` or any `5xx`
+  (e.g. `503 maintenance`)
+
+The order may still be alive at BankID, so the session transaction is kept and
+the caller can retry. This differs from upstream `janjoo-group/laravel-bank-id`,
+which returns `null` for all of these and so drops a valid transaction on a
+blip. `cancel()` stays best-effort and returns `false` for every failure.
 
 ## Front-end
 

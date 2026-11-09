@@ -107,14 +107,16 @@ class RpApi
      */
 
     /**
-     * An HTTP error response (4xx/5xx) is BankID's answer about the order, so it
-     * maps to null. A ConnectException is deliberately not caught: a network
-     * failure says nothing about the order, which may still be alive upstream.
-     * Returning null would make BankIDService::collect() drop a valid
-     * transaction on a blip, so the caller gets the exception and can retry.
-     * (Upstream janjoo-group/laravel-bank-id returns null for both.)
+     * A client error about the order (e.g. 400 invalidParameters, 404) is
+     * BankID's answer, so it maps to null. A failure that says nothing about
+     * the order is thrown instead: a ConnectException, 408 requestTimeout,
+     * 429 and any 5xx (500 internalError, 503 maintenance). The order may still
+     * be alive upstream. Returning null would make BankIDService::collect()
+     * drop a valid transaction on a blip, so the caller gets the exception and
+     * can retry. (Upstream janjoo-group/laravel-bank-id returns null for all.)
      *
      * @throws ConnectException when BankID cannot be reached
+     * @throws BadResponseException on a transient HTTP error
      */
     protected function postAndMap(
         string $endpoint,
@@ -123,7 +125,11 @@ class RpApi
     ): ?object {
         try {
             $response = $this->performRequest($endpoint, $payload);
-        } catch (BadResponseException) {
+        } catch (BadResponseException $e) {
+            if ($this->isTransient($e)) {
+                throw $e;
+            }
+
             return null;
         }
 
@@ -131,6 +137,17 @@ class RpApi
             $this->unwrapResponse($response),
             $responseClass
         );
+    }
+
+    /**
+     * Whether an HTTP error leaves the order's state unknown rather than
+     * describing it.
+     */
+    protected function isTransient(BadResponseException $e): bool
+    {
+        $status = $e->getResponse()->getStatusCode();
+
+        return $status >= 500 || in_array($status, [408, 429], true);
     }
 
     protected function performRequest(string $endpoint, array $payload): Response

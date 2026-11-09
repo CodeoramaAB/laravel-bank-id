@@ -3,6 +3,7 @@
 namespace Jgroup\BankID\Tests;
 
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\BadResponseException;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
@@ -49,13 +50,51 @@ class RpApiErrorHandlingTest extends TestCase
         $rpApi->collect(new CollectRequest('order-ref'));
     }
 
-    public function test_an_http_error_response_returns_null()
+    /**
+     * @dataProvider answersAboutTheOrder
+     */
+    public function test_a_client_error_about_the_order_returns_null(int $status, string $errorCode)
     {
         $rpApi = $this->rpApiRespondingWith(
-            new Response(400, ['Content-Type' => 'application/json'], '{"errorCode":"invalidParameters","details":"No such order"}')
+            new Response($status, ['Content-Type' => 'application/json'], '{"errorCode":"'.$errorCode.'","details":"No such order"}')
         );
 
         $this->assertNull($rpApi->collect(new CollectRequest('order-ref')));
+    }
+
+    public static function answersAboutTheOrder(): array
+    {
+        return [
+            '400 invalidParameters' => [400, 'invalidParameters'],
+            '404 notFound' => [404, 'notFound'],
+        ];
+    }
+
+    /**
+     * 408, 5xx (and 429) say nothing about the order either, so they are
+     * thrown like a connection failure instead of dropping a valid order.
+     *
+     * @dataProvider transientErrors
+     */
+    public function test_a_transient_http_error_is_thrown(int $status, string $errorCode)
+    {
+        $rpApi = $this->rpApiRespondingWith(
+            new Response($status, ['Content-Type' => 'application/json'], '{"errorCode":"'.$errorCode.'","details":"Try again"}')
+        );
+
+        $this->expectException(BadResponseException::class);
+
+        $rpApi->collect(new CollectRequest('order-ref'));
+    }
+
+    public static function transientErrors(): array
+    {
+        return [
+            '408 requestTimeout' => [408, 'requestTimeout'],
+            '429 too many requests' => [429, 'tooManyRequests'],
+            '500 internalError' => [500, 'internalError'],
+            '503 maintenance' => [503, 'maintenance'],
+        ];
     }
 
     public function test_cancel_stays_best_effort_on_a_connection_failure()
